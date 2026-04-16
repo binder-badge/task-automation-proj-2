@@ -130,13 +130,15 @@ def _parse_pcap(input_file):
 #uncomment this block below
 # use test_Node1.pcap for testing, it has 10 packets, 5 requests and 5 replies.       
 
-# if __name__ == "__main__":
-#     # test txt parsing
-#     packets_txt = parse("test_Node1_filtered.txt")
-#     print("TXT packets:", len(packets_txt))
-#     print(packets_txt[:2])
+if __name__ == "__main__":
+    # test txt parsing
+    packets_txt = parse("test_Node1_filtered.txt")
+    print("TXT packets:", len(packets_txt))
+    print(packets_txt[:2])
+    # print(packets_txt[0]['info'])
 
-#     # test pcap parsing
-#     packets_pcap = parse("test_Node1_filtered.pcap")
-#     print("PCAP packets:", len(packets_pcap))
-#     print(packets_pcap[:2])
+    # test pcap parsing
+    packets_pcap = parse("test_Node1_filtered.pcap")
+    print("PCAP packets:", len(packets_pcap))
+    print(packets_pcap[:2])
+    # print(packets_pcap[0]['info'])

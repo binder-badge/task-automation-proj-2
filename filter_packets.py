@@ -71,11 +71,11 @@ def filter(input_file, output_format="pcap", output_base=None):
 #uncomment block below to test   
 # use test_Node1.pcap for testing, it has 10 packets, 5 requests and 5 replies.       
 
-# if __name__ == "__main__":
-#     # Default test -> outputs filtered .pcap
-#     output_file = filter("test_Node1.pcap")
-#     print("Created:", output_file)
+if __name__ == "__main__":
+    # Default test -> outputs filtered .pcap
+    output_file = filter("test_Node1.pcap")
+    print("Created:", output_file)
 
-#     # Optional txt test
-#     txt_file = filter("test_Node1.pcap", output_format="txt")
-#     print("Created:", txt_file)
+    # Optional txt test
+    txt_file = filter("test_Node1.pcap", output_format="txt")
+    print("Created:", txt_file)
