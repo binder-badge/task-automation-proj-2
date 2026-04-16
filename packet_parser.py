@@ -135,8 +135,10 @@ def _parse_pcap(input_file):
 #     packets_txt = parse("test_Node1_filtered.txt")
 #     print("TXT packets:", len(packets_txt))
 #     print(packets_txt[:2])
+#     # print(packets_txt[0]['info'])
 
 #     # test pcap parsing
 #     packets_pcap = parse("test_Node1_filtered.pcap")
 #     print("PCAP packets:", len(packets_pcap))
 #     print(packets_pcap[:2])
+#     # print(packets_pcap[0]['info'])
