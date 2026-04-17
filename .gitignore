@@ -1,4 +1,4 @@
 test*
 **/__pycache__/
-filtered.pcap
-filtered.txt
+*filtered*
+*filtered*
