@@ -59,7 +59,7 @@ def compute(packets,node_ip):
 		#not request, must be reply
 		else:
 
-			# check if request was received or sent. 
+			# check if reply was received or sent. 
 			# src = node = sent, otherwise, received
 			if packets[i]['src_ip'] == node_ip:
 				sent_replies += 1
@@ -71,7 +71,7 @@ def compute(packets,node_ip):
 
 
 	request_goodput /= float(packets[len(packets)-1]["timestamp"])
-	# avg_reply_delay /= sent_requests
+	avg_reply_delay /= sent_requests
 
 	#use not-yet-avg-ed avt_rtt to calculate request_throughput
 	request_throughput = sent_request_bytes / 1024 / avg_rtt #if avg_rtt > 0 else 0 ##should i leave this, or is it not needed (i really want to keep it so hteres something fun styleistically)
@@ -98,7 +98,7 @@ def compute(packets,node_ip):
 	results.update({"Request Goodput (kB/sec)":request_goodput}) # done
 	results.update({"Average Reply Delay (us)":avg_reply_delay}) # done?
 	
-	results.update({"Average Request Hop Count":avg_hops}) 
+	results.update({"Average Request Hop Count":avg_hops}) # should be done
 	#print(str(sent_request_bytes) + " " + str(received_request_bytes))
 	#print(str(sent_request_data) + " " + str(received_request_data))
 	return results
