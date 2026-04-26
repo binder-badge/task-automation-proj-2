@@ -1,27 +1,23 @@
 import re
 from pathlib import Path
 
-#pip install scapy 		<-- is required!!!!
-#pip install scapy 		<-- is required!!!!
-#pip install scapy 		<-- is required!!!!
-#pip install scapy 		<-- is required!!!!
-
-def parse(input_file):
+def parse(input_file, use_hex=True):
     """
-    Parse filtered ICMP packets from:
-    - filtered .txt
-    - filtered .pcap
+    Parse filtered ICMP Echo Request/Reply packets from a filtered .txt file.
+
+    By default reads the hex dump under each packet (bonus path); set
+    use_hex=False to fall back to the textual summary line.
     """
     input_path = Path(input_file)
     suffix = input_path.suffix.lower()
 
-    if suffix == ".txt":
-        packets = _parse_txt(input_file)
-    elif suffix == ".pcap":
-        packets = _parse_pcap(input_file)
-    else:
-        raise ValueError("Input must be a .txt or .pcap file.")
+    if suffix != ".txt":
+        raise ValueError("Input must be a .txt file.")
 
+    if use_hex:
+        packets = _parse_hex(input_file)
+    else:
+        packets = _parse_txt(input_file)
     print(f"Parsed {len(packets)} packets")
     return packets
 
@@ -29,7 +25,7 @@ def parse(input_file):
 def _parse_txt(input_file):
     packets = []
 
-	# don't ask what this does. i found it online and it works.
+    # don't ask what this does. i found it online and it works.
     pattern = re.compile(
         r"^\s*(\d+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+(ICMP)\s+(\d+)\s+(.*)$"
     )
@@ -46,17 +42,19 @@ def _parse_txt(input_file):
 
             info = match.group(7)
 
-			#same as above, found online and it works. extracts id, seq, ttl from the info string
+            # same as above, found online and it works. extracts id, seq, ttl from the info string
             id_match = re.search(r"id=0x([0-9a-fA-F]+)", info)
             seq_match = re.search(r"seq=(\d+)", info)
             ttl_match = re.search(r"ttl=(\d+)", info)
 
-            packet_type = "request" if "request" in info.lower() else "reply"
-			#icmp are either type 8 (request) or type 0 (reply)
+            # info also contains the cross-reference like "(reply in 442)" /
+            # "(request in 441)", so match the leading "Echo (ping) ..." token.
+            packet_type = "request" if "Echo (ping) request" in info else "reply"
+            # icmp are either type 8 (request) or type 0 (reply)
             icmp_type = 8 if packet_type == "request" else 0
 
-			#expected output format:
-			# {packet_num: 1, timestamp: 0.123456, src_ip: '192.168.1.1', ...}
+            # expected output format:
+            # {packet_num: 1, timestamp: 0.123456, src_ip: '192.168.1.1', ...}
             packets.append(
                 {
                     "packet_num": int(match.group(1)),
@@ -77,68 +75,116 @@ def _parse_txt(input_file):
     return packets
 
 
-def _parse_pcap(input_file):
-    try:
-        from scapy.all import rdpcap, IP, ICMP
-    except ImportError as exception:
-        raise ImportError(
-            "Scapy is required for .pcap parsing. Install it with: pip install scapy"
-        ) from exception
+# ---- Hex dump parsing (bonus) -----------------------------------------------
 
-    parsed_packets = []
-    packets = rdpcap(input_file)
+_SUMMARY_HEAD_RE = re.compile(r"^\s*(\d+)\s+([\d\.]+)")
+_HEX_OFFSET_RE = re.compile(r"^[0-9a-fA-F]{4}\s")
+_HEX_CHARS = set("0123456789abcdefABCDEF")
 
-    for index, packet in enumerate(packets, start=1):
-        if IP not in packet or ICMP not in packet:
+
+def _parse_hex(input_file):
+    packets = []
+    for block in _split_blocks(input_file):
+        pkt = _parse_block_hex(block)
+        if pkt is not None:
+            packets.append(pkt)
+    return packets
+
+
+def _split_blocks(input_file):
+    blocks = []
+    current = []
+    with open(input_file, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith("No.     Time"):
+                if current:
+                    blocks.append(current)
+                current = [line]
+            elif current:
+                current.append(line)
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def _parse_block_hex(block):
+    if len(block) < 2:
+        return None
+
+    head = _SUMMARY_HEAD_RE.match(block[1])
+    if head is None:
+        return None
+    packet_num = int(head.group(1))
+    timestamp = float(head.group(2))
+
+    raw = _collect_hex_bytes(block[2:])
+    # need Eth(14) + IPv4(>=20) + ICMP echo header(8) at minimum
+    if len(raw) < 42:
+        return None
+
+    # Ethernet II: dst MAC (6), src MAC (6), EtherType (2)
+    ethertype = (raw[12] << 8) | raw[13]
+    if ethertype != 0x0800:  # IPv4 only
+        return None
+
+    # IPv4 header
+    ihl = raw[14] & 0x0F
+    ip_header_len = ihl * 4
+    total_length = (raw[16] << 8) | raw[17]
+    ttl = raw[22]
+    protocol = raw[23]
+    if protocol != 1:  # ICMP
+        return None
+    src_ip = ".".join(str(b) for b in raw[26:30])
+    dst_ip = ".".join(str(b) for b in raw[30:34])
+
+    # ICMP echo header sits right after the IP header
+    icmp_off = 14 + ip_header_len
+    if len(raw) < icmp_off + 8:
+        return None
+    icmp_type = raw[icmp_off]
+    if icmp_type not in (0, 8):
+        return None
+    icmp_id = (raw[icmp_off + 4] << 8) | raw[icmp_off + 5]
+    seq = (raw[icmp_off + 6] << 8) | raw[icmp_off + 7]
+
+    # Frame length = Ethernet header + everything the IP header says it covers.
+    length = 14 + total_length
+
+    packet_type = "request" if icmp_type == 8 else "reply"
+    info = (
+        f"Echo (ping) {packet_type}  "
+        f"id=0x{icmp_id:04x}, seq={seq}, ttl={ttl}"
+    )
+
+    return {
+        "packet_num": packet_num,
+        "timestamp": timestamp,
+        "src_ip": src_ip,
+        "dst_ip": dst_ip,
+        "protocol": "ICMP",
+        "length": length,
+        "info": info,
+        "packet_type": packet_type,
+        "icmp_type": icmp_type,
+        "icmp_id": icmp_id,
+        "seq": seq,
+        "ttl": ttl,
+    }
+
+
+def _collect_hex_bytes(lines):
+    """Pull the byte values out of Wireshark's hex dump rows."""
+    raw = bytearray()
+    for line in lines:
+        if not _HEX_OFFSET_RE.match(line):
             continue
-
-        ip_layer = packet[IP]
-        icmp_layer = packet[ICMP]
-
-		#0 = reply, 8 = request
-        if icmp_layer.type not in (0, 8):
-            continue
-
-        packet_type = "request" if icmp_layer.type == 8 else "reply"
-
-        parsed_packets.append(
-            {
-                "packet_num": index,
-                "timestamp": float(packet.time),
-                "src_ip": ip_layer.src,
-                "dst_ip": ip_layer.dst,
-                "protocol": "ICMP",
-                "length": len(packet),
-                "info": (
-                    f"Echo (ping) {packet_type} "
-                    f"id=0x{icmp_layer.id:04x}, "
-                    f"seq={icmp_layer.seq}, "
-                    f"ttl={ip_layer.ttl}"
-                ),
-                "packet_type": packet_type,
-                "icmp_type": int(icmp_layer.type),
-                "icmp_id": int(icmp_layer.id),
-                "seq": int(icmp_layer.seq),
-                "ttl": int(ip_layer.ttl),
-            }
-        )
-
-    return parsed_packets
-
-
-"""in need of testing - run this file directly to test both .txt and .pcap parsing with the provided test files"""
-#uncomment this block below
-# use test_Node1.pcap for testing, it has 10 packets, 5 requests and 5 replies.       
-
-# if __name__ == "__main__":
-#     # test txt parsing
-#     packets_txt = parse("test_Node1_filtered.txt")
-#     print("TXT packets:", len(packets_txt))
-#     print(packets_txt[:2])
-#     # print(packets_txt[0]['info'])
-
-#     # test pcap parsing
-#     packets_pcap = parse("test_Node1_filtered.pcap")
-#     print("PCAP packets:", len(packets_pcap))
-#     print(packets_pcap[:2])
-#     # print(packets_pcap[0]['info'])
+        # split off the offset, then take 2-char hex tokens until we hit ASCII
+        tokens = line.split()
+        for tok in tokens[1:]:
+            if len(tok) == 2 and tok[0] in _HEX_CHARS and tok[1] in _HEX_CHARS:
+                raw.append(int(tok, 16))
+            else:
+                # the ASCII representation column starts here -> stop this row
+                break
+    return raw
