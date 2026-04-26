@@ -87,8 +87,8 @@ def compute(packets, node_ip):
 	# throughput / goodput per spec: divided by sum of all Ping RTTs (in seconds)
 	# avg_rtt is currently the sum of RTTs in seconds; we use it BEFORE averaging.
 	if avg_rtt > 0:
-		request_throughput = sent_request_bytes / 1024 / avg_rtt
-		request_goodput = sent_request_data / 1024 / avg_rtt
+		request_throughput = sent_request_bytes / 1000 / avg_rtt
+		request_goodput = sent_request_data / 1000 / avg_rtt
 
 	# now convert avg_rtt from sum to average and to milliseconds
 	if num_rtt > 0:
